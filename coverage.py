@@ -207,6 +207,72 @@ def existing_build_dirs(suites):
     return dirs, missing
 
 
+def suite_tracefile(root, suite_name):
+    return root / f"coverage-{suite_name}-trace.json"
+
+
+def suite_compiled_inventory(root, suite_name):
+    return root / f"coverage-{suite_name}-compiled.json"
+
+
+def gcovr_common_args(root, src_dir, capture_dir):
+    return [
+        "gcovr",
+        f"--root={to_gcovr_path(root)}",
+        f"--filter={to_gcovr_path(src_dir)}/",
+        f"--filter={to_gcovr_path(capture_dir)}/",
+        "--exclude=.*Test\\.cpp$",
+        "--exclude=.*/tests/.*",
+        "--exclude=.*test_main\\.cpp$",
+        "--exclude=.*googletest/.*",
+        "--exclude=.*googlemock/.*",
+        "--sort",
+        "uncovered-number",
+        "--sort-reverse",
+    ]
+
+
+def write_suite_artifacts(root, src_dir, capture_dir, suite):
+    build_dir = suite["build_dir"]
+    if not build_dir.exists():
+        print(f"ERROR: Missing build directory for suite '{suite['name']}': {build_dir}")
+        return False
+
+    tracefile = suite["tracefile"]
+    compiled_inventory = suite["compiled_inventory"]
+
+    gcovr_args = gcovr_common_args(root, src_dir, capture_dir)
+    gcovr_args.extend(
+        [
+            to_gcovr_path(build_dir),
+            f'--json "{tracefile}"',
+            "--json-pretty",
+        ]
+    )
+    if not run(" ".join(gcovr_args), cwd=root):
+        print(f"ERROR: Failed to generate coverage tracefile for suite '{suite['name']}'")
+        return False
+
+    compiled = sorted(compiled_source_files_from_build_dirs(root, [build_dir]))
+    compiled_inventory.write_text(json.dumps(compiled, indent=2), encoding="utf-8")
+    return True
+
+
+def load_compiled_inventories(suites):
+    compiled = set()
+    for suite in suites:
+        compiled_path = suite["compiled_inventory"]
+        if not compiled_path.exists():
+            continue
+        try:
+            entries = json.loads(compiled_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(entries, list):
+            compiled.update(str(entry).replace("\\", "/") for entry in entries)
+    return compiled
+
+
 def main():
     args = parse_args()
 
@@ -226,6 +292,8 @@ def main():
                 "build_dir": root / ".pio" / "build" / "tests_coverage",
                 "build_cmd": "pio test -e tests_coverage",
                 "run_cmd": None,
+                "tracefile": suite_tracefile(root, "unit"),
+                "compiled_inventory": suite_compiled_inventory(root, "unit"),
             }
         )
 
@@ -244,6 +312,8 @@ def main():
                 "build_dir": integration_build,
                 "build_cmd": f"pio test -e integration_coverage {filter_args}".strip(),
                 "run_cmd": None,
+                "tracefile": suite_tracefile(root, "integration"),
+                "compiled_inventory": suite_compiled_inventory(root, "integration"),
             }
         )
 
@@ -254,6 +324,9 @@ def main():
     print("\n=== Cleaning previous coverage data ===")
     for suite in suites:
         clean_gcda(suite["build_dir"])
+        for artifact in (suite["tracefile"], suite["compiled_inventory"]):
+            if artifact.exists():
+                artifact.unlink()
 
     print("\n=== Building and running coverage suites ===")
     for suite in suites:
@@ -264,35 +337,21 @@ def main():
         if suite["run_cmd"] and not run(suite["run_cmd"], cwd=root):
             print(f"ERROR: {suite['name']} executable failed")
             return 1
+        if not write_suite_artifacts(root, src_dir, capture_dir, suite):
+            return 1
 
     print("\n=== Generating coverage reports ===")
     txt_report = root / "coverage.txt"
     branch_txt_report = root / "coverage-branches.txt"
     json_summary = root / "coverage-summary.json"
 
-    gcovr_base = [
-        "gcovr",
-        f"--root={to_gcovr_path(root)}",
-        f"--filter={to_gcovr_path(src_dir)}/",
-        f"--filter={to_gcovr_path(capture_dir)}/",
-        "--exclude=.*Test\\.cpp$",
-        "--exclude=.*/tests/.*",
-        "--exclude=.*test_main\\.cpp$",
-        "--exclude=.*googletest/.*",
-        "--exclude=.*googlemock/.*",
-        "--sort",
-        "uncovered-number",
-        "--sort-reverse",
-    ]
-    gcov_search_dirs, missing_build_dirs = existing_build_dirs(suites)
-    if missing_build_dirs:
-        print("WARNING: Coverage build directory missing at report time:")
-        for missing_dir in missing_build_dirs:
-            print(f"  - {missing_dir}")
-    if not gcov_search_dirs:
-        print("ERROR: No coverage build directories found for gcovr.")
+    gcovr_base = gcovr_common_args(root, src_dir, capture_dir)
+    tracefiles = [suite["tracefile"] for suite in suites if suite["tracefile"].exists()]
+    if len(tracefiles) != len(suites):
+        print("ERROR: Missing one or more persisted suite coverage tracefiles.")
         return 1
-    gcovr_base.extend([to_gcovr_path(path) for path in gcov_search_dirs])
+    for tracefile in tracefiles:
+        gcovr_base.append(f'--add-tracefile "{tracefile}"')
 
     if not run(" ".join(gcovr_base + [f"--txt \"{txt_report}\"", "--print-summary"]), cwd=root):
         print("ERROR: Failed to generate text report")
@@ -338,8 +397,7 @@ def main():
             str((root / item.get("filename", "")).resolve()).replace("\\", "/")
             for item in files
         }
-        build_dirs = [suite["build_dir"] for suite in suites]
-        compiled_set = compiled_source_files_from_build_dirs(root, build_dirs)
+        compiled_set = load_compiled_inventories(suites)
         all_cpp = []
         all_cpp.extend((root / "FluidNC" / "src").rglob("*.c"))
         all_cpp.extend((root / "FluidNC" / "src").rglob("*.cpp"))
