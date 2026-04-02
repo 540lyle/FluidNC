@@ -29,10 +29,17 @@ INTEGRATION_SUITES = [
 ]
 
 
-def run(cmd, check=True):
+def run(cmd, check=True, cwd=None):
     """Run a command and return success status."""
-    print(f"$ {cmd}")
-    result = subprocess.run(cmd, shell=True)
+    shell_cmd = cmd
+    if cwd is not None:
+        cwd_str = str(cwd)
+        if os.name == "nt":
+            shell_cmd = f'cd /d "{cwd_str}" && {cmd}'
+        else:
+            shell_cmd = f'cd "{cwd_str}" && {cmd}'
+    print(f"$ {shell_cmd}")
+    result = subprocess.run(shell_cmd, shell=True)
     if check and result.returncode != 0:
         return False
     return True
@@ -188,6 +195,18 @@ def compiled_source_files_from_build_dirs(root, build_dirs):
     return compiled
 
 
+def existing_build_dirs(suites):
+    dirs = []
+    missing = []
+    for suite in suites:
+        build_dir = suite["build_dir"]
+        if build_dir.exists():
+            dirs.append(build_dir)
+        else:
+            missing.append(build_dir)
+    return dirs, missing
+
+
 def main():
     args = parse_args()
 
@@ -239,10 +258,10 @@ def main():
     print("\n=== Building and running coverage suites ===")
     for suite in suites:
         print(f"\n--- {suite['name']} ---")
-        if not run(suite["build_cmd"]):
+        if not run(suite["build_cmd"], cwd=root):
             print(f"ERROR: {suite['name']} build/test failed")
             return 1
-        if suite["run_cmd"] and not run(suite["run_cmd"]):
+        if suite["run_cmd"] and not run(suite["run_cmd"], cwd=root):
             print(f"ERROR: {suite['name']} executable failed")
             return 1
 
@@ -265,17 +284,25 @@ def main():
         "uncovered-number",
         "--sort-reverse",
     ]
-    gcovr_base.extend([to_gcovr_path(suite["build_dir"]) for suite in suites])
+    gcov_search_dirs, missing_build_dirs = existing_build_dirs(suites)
+    if missing_build_dirs:
+        print("WARNING: Coverage build directory missing at report time:")
+        for missing_dir in missing_build_dirs:
+            print(f"  - {missing_dir}")
+    if not gcov_search_dirs:
+        print("ERROR: No coverage build directories found for gcovr.")
+        return 1
+    gcovr_base.extend([to_gcovr_path(path) for path in gcov_search_dirs])
 
-    if not run(" ".join(gcovr_base + [f"--txt \"{txt_report}\"", "--print-summary"])):
+    if not run(" ".join(gcovr_base + [f"--txt \"{txt_report}\"", "--print-summary"]), cwd=root):
         print("ERROR: Failed to generate text report")
         return 1
 
-    if not run(" ".join(gcovr_base + ["--txt-metric branch", f"--txt \"{branch_txt_report}\""])):
+    if not run(" ".join(gcovr_base + ["--txt-metric branch", f"--txt \"{branch_txt_report}\""]), cwd=root):
         print("ERROR: Failed to generate branch text report")
         return 1
 
-    if not run(" ".join(gcovr_base + [f"--json-summary \"{json_summary}\"", "--json-summary-pretty"])):
+    if not run(" ".join(gcovr_base + [f"--json-summary \"{json_summary}\"", "--json-summary-pretty"]), cwd=root):
         print("ERROR: Failed to generate JSON summary")
         return 1
 
@@ -288,7 +315,8 @@ def main():
                     f"--html-details \"{html_report}\"",
                     "--html-title \"FluidNC Coverage (Unit + Machine Buses + WebUI)\"",
                 ]
-            )
+            ),
+            cwd=root,
         ):
             print("ERROR: Failed to generate HTML report")
             return 1
@@ -357,10 +385,9 @@ def main():
             f"{whole_repo_covered_lines}/{whole_repo_total_lines} ({whole_repo_line_pct:.1f}%)"
         )
 
-        # In stage 1 we only execute a narrow host matrix, so guardrails should
-        # reflect the files compiled by the selected coverage suites rather than
-        # the full historical integration host surface.
-        active_host_files = instrumented_set
+        # Active-host guardrails should be anchored to the configured host build
+        # surface, not self-derived from what happened to be instrumented.
+        active_host_files = active_host_files_from_platformio(root)
         active_host_instrumented = instrumented_set & active_host_files
         active_host_callable = callable_set & active_host_files
         active_host_called = {
