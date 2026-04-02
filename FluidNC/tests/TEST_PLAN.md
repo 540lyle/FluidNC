@@ -37,8 +37,17 @@ This guide defines how to add tests consistently across unit, host integration, 
 1. Add a suite directory under `FluidNC/tests/test_integration_<suite_name>/`.
 2. Put suite-local test files in that directory and include `test_main.cpp`.
 3. If helpers are shared across suites, place them in `FluidNC/tests/support/` or `FluidNC/capture/`, not in a discoverable suite directory.
-4. Update the shared `integration_common` source/filter list in `platformio.ini` only when the new suite needs additional host-safe firmware or capture sources.
-5. If the new suite should be skippable in coverage, add a matching `--skip-...` mapping in `coverage.py`.
+4. Integration envs use one shared host build surface from `integration_common.build_src_filter`.
+   Add product and capture sources there when they are part of the common stage surface.
+5. Update the shared `integration_common` source/filter list in `platformio.ini` only when the new suite needs additional host-safe firmware or capture sources.
+6. Prefer composition/bootstrap seams over product-file test branches:
+   - keep hardware/API shims in `FluidNC/capture/`
+   - move module registration or setting/bootstrap side effects into dedicated registration translation units
+   - instantiate real product modules in tests whenever practical
+7. Keep the integration build path-neutral:
+   - `tools/integration_path_aliases.py` and the `g++`/`gcc`/`ar`/`ranlib` wrappers exist to make PlatformIO-relative paths resolvable from compiler working directories
+   - add more source wrappers only if a specific compiler invocation still cannot be expressed through the shared surface
+8. If the new suite should be skippable in coverage, add a matching `--skip-...` mapping in `coverage.py`.
 
 ## Verification Commands
 - Unit:
@@ -80,3 +89,6 @@ This guide defines how to add tests consistently across unit, host integration, 
 - mutable global state without reset helper
 - changing coverage denominator to hide missing execution
 - merging fixture scenarios without documenting required machine profile
+- `PIO_UNIT_TESTING` behavior forks in product files when a composition-root or shim-based seam would work
+- test-local reimplementations of product modules that make coverage appear better than the exercised code really is
+- suite-local include-trampoline `.cpp` files when the shared host integration surface can compile the sources directly

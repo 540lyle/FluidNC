@@ -19,78 +19,14 @@
 #undef private
 
 #include "ArduinoOTA.h"
+#include "Stage1HostSupport.h"
 #include "WiFi.h"
 #include "WiFiClientSecure.h"
 #include "mdns.h"
 
-void protocol_buffer_synchronize() {}
-
-void delay_ms(uint32_t) {}
-
-void localfs_unmount() {}
-
-void trim(std::string_view& sv) {
-    while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.front()))) {
-        sv.remove_prefix(1);
-    }
-    while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.back()))) {
-        sv.remove_suffix(1);
-    }
-}
-
-bool read_number(const std::string_view sv, float& value, bool) {
-    std::string text(sv);
-    char* end = nullptr;
-    value = std::strtof(text.c_str(), &end);
-    return end != text.c_str() && *end == '\0';
-}
-
-std::string IP_string(uint32_t ipaddr) {
-    return std::to_string((ipaddr >> 24) & 0xff) + "." + std::to_string((ipaddr >> 16) & 0xff) + "."
-           + std::to_string((ipaddr >> 8) & 0xff) + "." + std::to_string(ipaddr & 0xff);
-}
-
-unsigned long millis();
-
 namespace {
-constexpr int kPushoverNotification = 1;
-constexpr int kEmailNotification = 2;
-constexpr int kLineNotification = 3;
-constexpr int kTelegramNotification = 4;
-constexpr uint32_t kPushoverTimeout = 5000;
-constexpr uint32_t kLineTimeout = 5000;
-constexpr uint32_t kTelegramTimeout = 5000;
-constexpr uint32_t kEmailTimeout = 5000;
-
 void resetWebUiHarness() {
-    WiFi.setMode(WIFI_OFF);
-    WiFi.setHostname("fluidnc-host");
-
-    g_mdnsInitResult = 0;
-    g_mdnsHostnameSetResult = 0;
-    g_mdnsFreeCalls = 0;
-    g_mdnsAddedServices.clear();
-    g_mdnsRemovedServices.clear();
-
-    g_wifiClientConnectResult = true;
-    g_wifiClientConnected = false;
-    g_wifiClientStopCalls = 0;
-    g_wifiClientSetInsecureCalls = 0;
-    g_wifiClientWrites.clear();
-    g_wifiClientReadLines.clear();
-    g_wifiClientLastErrorCode = 0;
-    g_wifiClientLastErrorText.clear();
-
-    ArduinoOTA.mdnsEnabled = true;
-    ArduinoOTA.hostname = nullptr;
-    ArduinoOTA.command = U_FLASH;
-    ArduinoOTA.beginCalls = 0;
-    ArduinoOTA.endCalls = 0;
-    ArduinoOTA.handleCalls = 0;
-    ArduinoOTA.onStartHandler = nullptr;
-    ArduinoOTA.onEndHandler = nullptr;
-    ArduinoOTA.onProgressHandler = nullptr;
-    ArduinoOTA.onErrorHandler = nullptr;
+    Stage1HostSupport::resetWebUiState();
 
     WebUI::NotificationsService::_started = false;
     WebUI::NotificationsService::_notificationType = 0;
