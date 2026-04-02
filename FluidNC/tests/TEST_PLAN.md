@@ -47,6 +47,8 @@ This guide defines how to add tests consistently across unit, host integration, 
 7. Keep the integration build path-neutral:
    - `tools/integration_path_aliases.py` and the `g++`/`gcc`/`ar`/`ranlib` wrappers exist to make PlatformIO-relative paths resolvable from compiler working directories
    - add more source wrappers only if a specific compiler invocation still cannot be expressed through the shared surface
+   - treat this as a compatibility bridge, not the preferred steady-state design
+   - the longer-term cleanup would be a PlatformIO/layout change that emits stable absolute source, object, and archive paths without build-time rewriting
 8. If the new suite should be skippable in coverage, add a matching `--skip-...` mapping in `coverage.py`.
 
 ## Verification Commands
@@ -92,3 +94,4 @@ This guide defines how to add tests consistently across unit, host integration, 
 - `PIO_UNIT_TESTING` behavior forks in product files when a composition-root or shim-based seam would work
 - test-local reimplementations of product modules that make coverage appear better than the exercised code really is
 - suite-local include-trampoline `.cpp` files when the shared host integration surface can compile the sources directly
+- trying to replace the path bridge with more source wrappers instead of fixing the build graph or build paths

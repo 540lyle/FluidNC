@@ -28,6 +28,7 @@
 - Discovered integration suites run on one shared host build surface from `integration_common.build_src_filter`.
 - Shared host runtime shims for the current stage live in `C:\src\FluidNC\FluidNC\capture\Stage1HostSupport.cpp`.
 - Windows integration builds also use `C:\src\FluidNC\tools\integration_path_aliases.py` and the compiler/archive wrappers in `C:\src\FluidNC\tools\` to absolutize PlatformIO-relative paths.
+- That bridge is a practical workaround for the current PlatformIO build graph; it is not the preferred long-term shape.
 - `coverage.py` expects `tests_coverage` plus one shared `integration_coverage` env and maps build outputs back to source files.
 - Fixture tests are a separate Python/hardware layer, not part of the PlatformIO host suites.
 - Product behavior files should keep a single behavior path; host-specific registration/setup belongs in composition files or `capture/` shims.
@@ -37,6 +38,7 @@
 - A suite can appear to cover a subsystem while actually exercising host-local shadow implementations unless the suite-local wrappers include the real `.cpp` files.
 - Native host tests sometimes need suite-local source shims or stubs to avoid ESP32-specific static initialization.
 - Native host builds can also need build-tool wrappers when PlatformIO emits relative source/object/archive paths that are not valid from the compiler cwd.
+- If a future PlatformIO or layout change makes those paths absolute natively, the wrapper layer should be removed rather than expanded.
 - Coverage artifacts in the repo root are generated output and can become stale.
 - Registration side effects are a common source of host drift; prefer moving them into dedicated bootstrap TUs so tests can instantiate real modules directly.
 

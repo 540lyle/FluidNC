@@ -48,6 +48,7 @@
 - Stage 1 now uses one shared host integration surface from `integration_common.build_src_filter`.
 - Suite-local runtime shims were extracted into `C:\src\FluidNC\FluidNC\capture\Stage1HostSupport.cpp`, leaving the test files focused on fixtures, fake objects, and assertions.
 - The direct-shared integration build still needs a tooling seam on Windows so PlatformIO-relative source, object, and archive paths resolve correctly; that seam now lives in `tools/integration_path_aliases.py` plus the `g++`/`gcc`/`ar`/`ranlib` wrappers.
+- A pure `platformio.ini` absolute-path switch was not sufficient in this repo layout; PlatformIO still emitted repo-relative source paths from the build tree. The path bridge is therefore a compatibility workaround, not the preferred architecture.
 
 [Verified] Assumptions
 - Host integration is intended to run through PlatformIO `pio test`, not hand-run `pio run` binaries.
@@ -66,6 +67,7 @@
 - For discovered suites, verify the shared host surface includes the real product `.cpp` files under test; copied implementations or placeholder wrappers silently invalidate coverage claims.
 - Shared helpers belong in `FluidNC/tests/support/` or `FluidNC/capture/`; discoverable suite directories should only contain suite-local sources.
 - If PlatformIO path handling regresses again, inspect `tools/integration_path_aliases.py` before adding more source wrappers.
+- If the repo eventually drops the path bridge, the likely replacement is a PlatformIO/layout change that causes source, object, and archive paths to be emitted as stable absolute paths without build-time rewriting.
 
 [Unknown] Open Questions
 - Whether the skipped `MachineConfig::afterParse()` bus tests should be rehomed into a dedicated machine/config suite or re-enabled with a more complete native harness later.
