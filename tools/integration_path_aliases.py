@@ -51,6 +51,8 @@ def _mirror_source_tree(source_tree: Path, build_base: Path) -> None:
 
 _mirror_source_tree(source_root / "capture", build_dir / "capture")
 _mirror_source_tree(source_root / "src", build_dir / "src")
+_mirror_source_tree(source_root / "esp32", build_dir)
+_mirror_source_tree(source_root / "esp32", build_dir / "esp32")
 _mirror_source_tree(source_root / "tests", build_dir / "test")
 
 env["ENV"]["FLUIDNC_PROJECT_ROOT"] = str(project_dir)
